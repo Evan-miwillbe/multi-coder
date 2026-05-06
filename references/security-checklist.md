@@ -1,6 +1,6 @@
 # Security Checklist — Multi-Coder
 
-## OWASP Top 10:2025（Backend）
+## OWASP-style Backend Checks
 
 | ID | 类别 | 检查项 | 防御 |
 |----|------|--------|------|
@@ -46,3 +46,21 @@
 4. **回滚安全**：部分失败后系统能否恢复？
 5. **可观测性**：失败时是否有足够日志恢复现场？
 6. **信任边界**：用户输入是否被视为可信？
+
+## 执行层级
+
+| Risk | 何时使用 | 检查方式 |
+|------|----------|----------|
+| Low | 文案/样式/文档/低风险配置 | post-write 轻量检查 + 必要时采样 |
+| Medium | 多文件/API/状态流/数据模型 | Phase 2 标准审查 + 对应 domain checklist |
+| High | auth/支付/租户/数据迁移/secrets/LLM tools | Phase 2 完整审查 + adversarial review |
+
+每次 write 后只做轻量检查：diff 范围 lint/typecheck/test subset、secret scan、明显危险 API。完整安全 Gate 在 Phase 2 集中执行。
+
+## Blocking 标准
+
+- P0：no-ship，必须修复。要求有 `file:line`、攻击/失败路径、影响范围、修复建议。
+- P1：由主 CC 汇总给用户裁决，默认建议修复但不自动 no-ship。
+- P2：不阻塞，只作为后续改进建议。
+
+无法给出具体攻击路径或复现条件的 finding 不得 blocking。

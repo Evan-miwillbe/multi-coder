@@ -94,9 +94,20 @@ T2 ──→ T4 ─┘        │
 ## Constraints
 
 - Interface contracts from T2 are immutable once set
-- Main CC is the sole writer; subagents are read-only
-- Max 5 parallel subagents per wave
-- All changes must pass tests + security gate before merge
+- Default: Main CC is the sole product-source writer; subagents do not modify product code
+- Worktree Write mode requires user approval, one worktree per implementer, and explicit path allowlists
+- Max 3 parallel subagents per wave; max 5 total running/queued before batching
+- Run light checks after each write; complete Security Gate in Phase 2 before delivery
+
+## Execution Mode
+
+- mode: SAS / Task Fan-out / Worktree Write / Agent Teams
+- reason:
+- write isolation: main-cc only / worktree per implementer / not applicable
+- file ownership:
+  - main-cc:
+  - implementer-a:
+  - implementer-b:
 
 EOF
 

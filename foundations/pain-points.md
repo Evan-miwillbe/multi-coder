@@ -12,7 +12,7 @@ Reddit (r/programming, r/ExperiencedDevs, r/ClaudeCode, r/cursor), Zhihu, V2EX, 
 
 ### 2. AI 生成代码有隐藏 bug
 **现象**：代码"看起来能跑"但有隐蔽安全漏洞/逻辑错误。Amazon 2026 AI-code outages 损失数百万。
-**Multi-Coder 解法**：Security Gate + Adversarial Reviewer，每次 write 后自动触发，不是等"做完再说"。
+**Multi-Coder 解法**：每次 write 后做轻量检查，Phase 2 集中执行 Security Gate + Adversarial Reviewer，不是等"做完再说"。
 
 ### 3. 读代码比写代码耗时
 **现象**：成熟项目中，读代码是最耗时工作。90%+ 时间花在分析和调试。
@@ -44,7 +44,7 @@ Reddit (r/programming, r/ExperiencedDevs, r/ClaudeCode, r/cursor), Zhihu, V2EX, 
 
 ### 9. AI 陷入死循环
 **现象**：test → error → fix → test → error → fix... 永远循环，消耗 usage quota。
-**Multi-Coder 解法**：停滞恢复五级梯度 + Heartbeat 监控，90s 无进度自动干预。
+**Multi-Coder 解法**：停滞恢复五级梯度 + Heartbeat 监控，按 L2/L3/L4/risk 动态阈值干预。
 
 ### 10. 需求变更影响面分析
 **现象**："加一行代码"可能需要改数据库/API/测试/文档，级联效应。
