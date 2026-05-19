@@ -1,123 +1,84 @@
-# Multi-Coder — 多 Agent 编程协作 Skill
+# Multi-Coder
 
-> 把 47 轮研究实验中验证过的协作机制，搬进真实编程场景。
+**让 Claude Code 学会"找人帮忙"的编程协作 Skill。**
 
-Multi-Coder 是一个 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 自定义 Skill，让 Claude Code 在处理复杂编程任务时自动调度多个子 Agent 协作：架构设计、并行探索、代码审查、安全扫描、测试验证——在一个对话中完成。
+一个人写代码，容易顾此失彼——改了逻辑忘了安全，加了功能没跑测试。Multi-Coder 的想法很简单：复杂任务自动拆给几个专注的 Agent，各干各的，最后汇总。
 
-## 从哪来
+## 这东西从哪来的
 
-本项目直接继承 [multi-agent-research](https://github.com/Evan-miwillbe/multi-agent-research) v9.0 的架构——经过 47 轮消融实验、12 篇论文交叉验证后沉淀的 17 个协作机制。其中：
+去年我做了个研究项目 [multi-agent-research](https://github.com/Evan-miwillbe/multi-agent-research)，花了 13 天跑了 47 轮实验，想搞清楚一个问题：**多个 AI 一起干活，到底哪些协作方式真的有用？**
 
-- **13 个机制直接复用**（三问筛选、成本决策、停滞恢复梯度、Spawn 协议等）
-- **4 个机制针对编程改编**（异议触发→接口冲突、评估漏斗→测试驱动、共识检查→类型一致性）
-- **8 个机制是编程场景新增**（领域检测、安全 Gate、对抗性审查、接口契约锁定、Worktree 隔离写入等）
+实验做完，17 个机制里只有 2 个是核心必需的，其余大多是噪音。但这些被验证过的机制，放到编程场景里竟然也成立。于是就有了 Multi-Coder——把研究里验证过的东西，搬进真实的写代码过程。
 
-## 核心设计
+![从研究到工程](images/mechanism-reuse.png)
 
-```
-用户描述任务
-    │
-    ▼
-┌─────────────────────────────────┐
-│  S0  领域检测 + 风险分级         │  Frontend / Backend / Full-Stack
-│      三问筛选：拆？验？积？       │  Low / Medium / High
-└──────────────┬──────────────────┘
-               │
-       ┌───────┴───────┐
-       │ SAS（简单）    │ MAS（复杂）
-       │ 单 Agent 直接做│ 多 Agent 协作
-       └───────┬───────┘
-               │  MAS 路径
-               ▼
-┌──────────────────────────────────┐
-│  Phase 0  规划                    │
-│  architect → 接口契约 + ADR       │
-│  explorer  → 并行代码探索         │
-├──────────────────────────────────┤
-│  Phase 1  实现                    │
-│  implementer → 串行写码（默认）    │
-│  或 Worktree 隔离并行写           │
-├──────────────────────────────────┤
-│  Phase 2  验证                    │
-│  tester → 测试  reviewer → 审查   │
-│  security-reviewer → 安全扫描     │
-│  frontend-reviewer → UI/UX 检查   │
-├──────────────────────────────────┤
-│  Phase 3  集成                    │
-│  synthesizer → 合并 + 文档        │
-│  主 CC → 最终 commit              │
-└──────────────────────────────────┘
-```
+## 它怎么工作
 
-## 八个 Agent 角色
+你正常跟 Claude Code 聊，描述你要做的事。Multi-Coder 会先判断：这活简单还是复杂？涉及前端、后端、还是都有？有没有安全风险？
 
-| 角色 | 职责 | 权限 |
-|------|------|------|
-| **architect** | 分析代码结构，设计接口契约，产出 ADR | read-only + contracts 写入 |
-| **explorer** | 并行搜索代码库，定位关键文件和依赖 | read-only |
-| **implementer** | 按契约写代码（默认由主 CC 执行） | read-write（受文件边界约束） |
-| **reviewer** | 代码审查：逻辑、一致性、可维护性 | read-only |
-| **security-reviewer** | 对抗性安全审查（OWASP Top 10） | read-only |
-| **frontend-reviewer** | UI/UX、响应式、可访问性审查 | read-only |
-| **tester** | 编写和运行测试，验证实现 | read-write（仅测试文件） |
-| **synthesizer** | 整合多 Agent 产出，生成 changelog | read-only + 文档写入 |
+简单的事，一个 Agent 直接干完。复杂的事，自动拆成四步走：
 
-## 关键机制
+![工作流程](images/workflow.png)
 
-**优先单 Agent** — 强单 Agent + 工具 + 测试通常更便宜、更一致。只有任务确实可拆、可验、可积累时才启动 MAS。
+1. **规划** — architect 先看代码结构，定好接口。explorer 同时摸底有哪些依赖。
+2. **实现** — implementer 按定好的接口写代码。默认一个人写，避免冲突；确实能拆开的才并行。
+3. **验证** — reviewer 看逻辑，tester 跑测试，security-reviewer 找漏洞。三道关卡，不是走过场。
+4. **交付** — synthesizer 把所有人的产出整合到一起，主 CC 做最终 commit。
 
-**并行读，串行写** — 探索、审查、文档检索适合 fan-out；源码修改默认由主 CC 串行执行，避免冲突。
+## 八个角色
 
-**接口先行** — 任何并行实现前必须先有 `shared_memory/contracts/` 中的接口契约。
+![八个角色](images/roles.png)
 
-**五级停滞恢复** — Agent 卡住时自动升级：提示→换方法→缩小范围→主 CC 接管→用户介入。
+| 角色 | 干什么 | 能碰什么 |
+|------|--------|----------|
+| **architect** | 画蓝图，定接口契约 | 只读代码 + 写契约文件 |
+| **explorer** | 搜代码库，摸清依赖关系 | 只读 |
+| **implementer** | 按契约写功能代码 | 读写（限定文件范围） |
+| **reviewer** | 审逻辑、一致性、可维护性 | 只读 |
+| **security-reviewer** | 找安全漏洞（OWASP Top 10） | 只读 |
+| **frontend-reviewer** | 看 UI、响应式、可访问性 | 只读 |
+| **tester** | 写测试、跑测试 | 读写（仅测试文件） |
+| **synthesizer** | 整合产出，写 changelog | 只读 + 写文档 |
 
-**Evaluator-Optimizer 闭环** — 测试/lint/typecheck 是推进依据，不靠 Agent 自信放行。
+## 几个设计原则
+
+**能一个人干就别叫人。** 多 Agent 不是免费的——多花 4 倍 token，多一层沟通损耗。只有任务确实可拆、可验证、经验可积累时才值得。
+
+**读可以并行，写默认串行。** 让三个 Agent 同时读代码找问题没问题；但同时改同一个文件，一定出事。
+
+**接口先行。** 开工之前先定好契约，谁负责哪些文件、接口长什么样。不然并行写到一半发现对不上。
+
+**测试说了算。** 不靠 Agent 的"我觉得没问题"放行，靠测试通过、lint 过关、typecheck 绿灯。
+
+**卡住了会自救。** Agent 卡住不会死等——自动升级处理：换方法 → 缩小范围 → 主 CC 接管 → 找用户帮忙。
 
 ## 安装
 
 ```bash
-# 克隆到 Claude Code skills 目录
-git clone https://github.com/Evan-miwillbe/multi-coder.git \
-  ~/.claude/skills/multi-coder
-
-# 使用：在 Claude Code 中输入
-/multi-coder
+git clone https://github.com/Evan-miwillbe/multi-coder.git ~/.claude/skills/multi-coder
 ```
+
+在 Claude Code 里输入 `/multi-coder` 就能用。
 
 ## 项目结构
 
 ```
 multi-coder/
-├── SKILL.md              # 主 Skill 文件（操作层）
-├── foundations/           # 知识底座（WHY 层，按需加载）
-│   ├── theory.md         #   四支柱理论 + 可靠性数学 + Token 经济学
-│   ├── evolution.md       #   从 research 到 coder 的机制复用叙事
-│   ├── pain-points.md     #   编程多 Agent 的痛点分析
-│   └── enterprise-requirements.md
-├── roles/                 # 八个 Agent 角色定义
-│   ├── architect.md
-│   ├── explorer.md
-│   ├── implementer.md
-│   ├── reviewer.md
-│   ├── security-reviewer.md
-│   ├── frontend-reviewer.md
-│   ├── tester.md
-│   └── synthesizer.md
+├── SKILL.md               # 主文件（告诉 Claude 怎么干活）
+├── foundations/            # 知识底座（为什么这么设计）
+│   ├── theory.md          #   四支柱理论 + token 经济学
+│   ├── evolution.md       #   从 research 到 coder 的演化故事
+│   └── pain-points.md     #   编程多 Agent 的常见翻车
+├── roles/                 # 八个角色的详细说明
 ├── references/            # 参考材料
-│   ├── anti-patterns.md   #   反模式清单
+│   ├── anti-patterns.md   #   反模式：别这么干
 │   ├── security-checklist.md
-│   ├── role-library.md
-│   └── learning-log.md    #   运行时经验沉淀
+│   └── learning-log.md    #   运行时自动积累的经验
 └── scripts/
     ├── plan-tasks.sh
     └── run-tests.sh
 ```
 
-## 相关项目
+## 相关
 
-- [multi-agent-research](https://github.com/Evan-miwillbe/multi-agent-research) — 上游研究项目：47 轮实验、12 篇论文、17 个机制的消融验证
-
-## License
-
-MIT
+- [multi-agent-research](https://github.com/Evan-miwillbe/multi-agent-research) — 上游研究：47 轮实验的完整记录
